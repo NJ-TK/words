@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0">
+    <title>Words</title>
+    <style>
+        .raised {
+            font-size: 20px;
+            border-radius: 3px;
+            box-shadow: rgba(0, 0, 0, 0.26) 2px 2px 2px;
+            border: none;
+            outline: none;
+        }
+
+        .word {
+            margin: 5px;
+            padding: 15px;
+            font-size: 25px;
+            animation: card-appear 100ms ease-out;
+        }
+
+        @keyframes card-appear {
+            from {
+                transform: translateY(150px);
+                opacity: 0;
+            }
+        }
+
+        @keyframes title-bar {
+            from {
+                transform: translateY(-100%);
+            }
+        }
+
+        .message {
+            text-align: center;
+            font-size: 20px;
+            color: gray;
+            margin: 20px;
+        }
+    </style>
+</head>
+<body>
+<header style="
+font-size: 30px;
+line-height: 40px;
+padding: 10px;
+position: fixed;
+top: 0; left: 0;
+background-color: black;
+color: white; width: 100vw;
+animation: title-bar 500ms ease-in">
+    Words
+</header>
+<main style="margin-top: 65px">
+    <div id="loading" class="message">
+        読み込んでいます…
+    </div>
+    <div id="error" class="message" style="display: none">
+        データベースにアクセスできません<br>
+        アクセスをブロックされた、またはブラウザが対応していない可能性があります
+    </div>
+    <div id="content" style="display: none">
+        <button class="raised" onclick="toggleAddWordVisibility()">+</button>
+        <div id="add_word" style="display: none;">
+            <form name="add">
+                <input type="text" name="word" title="Word">
+                <input type="button" value="追加" class="raised" onclick="addWordFromUi()">
+            </form>
+        </div>
+        <div id="table"></div>
+    </div>
+</main>
+<script>
+    'use strict';
+    let /*HTMLElement?*/ loading;
+    let /*HTMLElement?*/ error;
+    let /*HTMLElement?*/ content;
+    let /*IDBDatabase?*/ db;
+    onload = function () {
+        loading = document.getElementById('loading');
+        error = document.getElementById('error');
+        content = document.getElementById('content');
+        if (!indexedDB) {
+            loading.style.display = 'none';
+            error.style.display = 'block';
+            return;
+        }
+        let dbRequest = indexedDB.open('words', 1);
+        dbRequest.onupgradeneeded = function (ev) {
+            const db = ev.target.result;
+            db.createObjectStore('words', {keyPath: 'word'})
+        };
+        dbRequest.onsuccess = function (ev) {
+            loading.style.display = 'none';
+            error.style.display = 'none';
+            content.style.display = 'block';
+            db = ev.target.result;
+            buildWordTable();
+        };
+        dbRequest.onerror = function (ev) {
+            loading.style.display = 'none';
+            content.style.display = 'none';
+            error.style.display = 'block';
+        };
+    };
+
+    function addWord(model) {
+        const request = obtainObjectStore('readwrite').add(model);
+        request.onsuccess = function (ev) {
+            buildWordTable();
+        }
+    }
+
+    function buildWordTable() {
+        const table = document.getElementById('table');
+        table.innerHTML = '';
+        const request = obtainObjectStore('readonly').getAll();
+        request.onsuccess = function (ev) {
+            const object = ev.target.result;
+            if (object.length <= 0) {
+                table.innerHTML = '<div class="message">まだWordはありません<br>[+]から追加しましょう</div>';
+                return;
+            }
+            for (let i = 0; i < object.length; i++) {
+                const obj = object[i];
+                const element = document.createElement('div');
+                element.setAttribute('class', 'raised word');
+                element.innerHTML = obj.word + '<button class="raised" style="float: right" ' +
+                    'onclick="deleteWord(\'' + obj.word + '\')">完了</button>';
+                table.appendChild(element);
+            }
+        };
+    }
+
+    function obtainObjectStore(mode) {
+        const transaction = db.transaction('words', mode);
+        return transaction.objectStore('words');
+    }
+
+    function incrementLevel(word, oldLevel) {
+        const request = obtainObjectStore('readwrite').put({word: word, level: parseInt(oldLevel) + 1});
+        request.onsuccess = function () {
+            buildWordTable();
+        }
+    }
+
+    function deleteWord(word) {
+        const request = obtainObjectStore('readwrite').delete(word);
+        request.onsuccess = function (ev) {
+            buildWordTable();
+        }
+    }
+
+    function toggleAddWordVisibility() {
+        const addWord = document.getElementById('add_word');
+        const isExpanded = addWord.style.display !== 'none';
+        if (isExpanded) {
+            addWord.style.display = 'none';
+        } else {
+            addWord.style.display = 'block';
+        }
+    }
+
+    function addWordFromUi() {
+        const word = document.forms.add.word.value;
+        if (/^[a-zA-Z]+$/.test(word)) {
+            document.forms.add.word.value = '';
+            addWord({word: word, level: 0});
+        }
+    }
+</script>
+</body>
+</html>
